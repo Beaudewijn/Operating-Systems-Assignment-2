@@ -56,6 +56,11 @@ static void* supply_arrivals()
   return(0);
 }
 
+// a struct to pass attributes of side and direction to each traffic light thread
+  typedef struct {
+    Side side;
+    Direction direction;
+  } LightArg;
 
 /*
  * manage_light(void* arg)
@@ -72,6 +77,11 @@ static void* manage_light(void* arg)
   //  - sleep for CROSS_TIME seconds
   //  - make the traffic light turn red
   //  - unlock the right mutex(es)
+
+  LightArg* light = (LightArg*) arg;
+
+  Side side = light->side;
+  Direction direction = light->direction;
 
   return(0);
 }
@@ -92,10 +102,30 @@ int main(int argc, char * argv[])
   start_time();
 
   // TODO: create a thread per traffic light that executes manage_light
+  pthread_t light_threads[4][3];
+
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 3; j++) {
+      LightArg* arg = malloc(sizeof(LightArg));
+      arg->side = i;
+      arg->direction = j;
+      
+      pthread_create(&light_threads[i][j], NULL, manage_light, arg);
+    }
+  }
 
   // TODO: create a thread that executes supply_arrivals
+  pthread_t supplier_thread;
+  pthread_create(&supplier_thread, NULL, supply_arrivals, NULL);
 
   // TODO: wait for all threads to finish
+  pthread_join(supplier_thread, NULL);
+
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 3; j++) {
+      pthread_join(light_threads[i][j], NULL);
+    }
+  }
 
   // destroy semaphores
   for (int i = 0; i < 4; i++)
