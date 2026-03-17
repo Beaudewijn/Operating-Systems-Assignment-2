@@ -96,7 +96,7 @@ static void* manage_light(void* arg)
 
   while (get_time_passed() < END_TIME) {
 
-    // wait until the mutex is free, and if end time is reached after waiting then exit
+    // wait until a car arrives at the traffic light, and if end time is reached after waiting then exit
     sem_wait(&semaphores[side][direction]);
     if (get_time_passed() >= END_TIME) {
       break;
@@ -154,6 +154,15 @@ int main(int argc, char * argv[])
   // TODO: create a thread that executes supply_arrivals
   pthread_t supplier_thread;
   pthread_create(&supplier_thread, NULL, supply_arrivals, NULL);
+
+  sleep(END_TIME - get_time_passed());
+
+  // after time is over, wake up any processes waiting for cars to arrive so they can terminate
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 3; j++) {
+      sem_post(&semaphores[i][j]);
+    }
+  }
 
   // TODO: wait for all threads to finish
   pthread_join(supplier_thread, NULL);
