@@ -57,10 +57,14 @@ static void* supply_arrivals()
 }
 
 // a struct to pass attributes of side and direction to each traffic light thread
-  typedef struct {
-    Side side;
-    Direction direction;
-  } LightArg;
+typedef struct {
+  Side side;
+  Direction direction;
+} LightArg;
+
+// the basic solution allows only at most one car on the intersection at all times,
+// so a single mutex for the entire intersection is sufficient
+static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * manage_light(void* arg)
@@ -78,10 +82,43 @@ static void* manage_light(void* arg)
   //  - make the traffic light turn red
   //  - unlock the right mutex(es)
 
+  // retrieve the identifier for this process's traffic light
   LightArg* light = (LightArg*) arg;
 
   Side side = light->side;
   Direction direction = light->direction;
+
+  // free the space from the struct
+  free(light);
+
+  // counter for what car at this side and direction is next
+  int next_car = 0;
+
+  while (get_time_passed() < END_TIME) {
+
+    // wait until the mutex is free, and if end time is reached after waiting then exit
+    sem_wait(&semaphores[side][direction]);
+    if (get_time_passed() >= END_TIME) {
+      break;
+    }
+
+    // claim the mutex
+    pthread_mutex_lock(&m);
+
+    // retrieve the next car that arrives at this process's traffic light
+    Arrival car = curr_arrivals[side][direction][next_car];
+    next_car++;
+
+    printf("traffic light %d %d turns green at time %d for car %d\n", side, direction, get_time_passed(), car.id);
+
+    // wait for car to cross
+    sleep(CROSS_TIME);
+
+    printf("traffic light %d %d turns red at time %d\n", side, direction, get_time_passed());
+
+    // free the mutex
+    pthread_mutex_unlock(&m);
+  }
 
   return(0);
 }
