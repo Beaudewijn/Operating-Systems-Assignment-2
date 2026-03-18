@@ -218,6 +218,11 @@ int main(int argc, char * argv[])
     }
   }
 
+  // destroy mutexes
+  for (int i = 0; i < NUM_MUTEXES; i++) {
+    pthread_mutex_destroy(&conflicts[i]);
+  }
+
   // destroy semaphores
   for (int i = 0; i < 4; i++)
   {
