@@ -62,9 +62,45 @@ typedef struct {
   Direction direction;
 } LightArg;
 
-// the basic solution allows only at most one car on the intersection at all times,
-// so a single mutex for the entire intersection is sufficient
-static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+// nine mutexes are needed to ensure there are no collisions in the crossing
+// these are for the following possible collisions and in the array indexed in the following order:
+// 0: north exit: east right - west left - south straight
+// 1: west exit: east straight - north right - south left
+// 2: south exit: east left - north straight - west right
+// 3: east straight - north straight - south left
+// 4: east straight - south straight - west left
+// 5: east left - south straight
+// 6: east left - south left
+// 7: north straight - west left
+// 8: west left - south left
+#define NUM_MUTEXES 9
+static pthread_mutex_t conflicts[NUM_MUTEXES];
+
+// create an array that for each traffic light stores how many mutexes it needs to obtain
+int light_mutexes_count[4][3] = {{0, 3, 1}, {3, 3, 1}, {4, 3, 0}, {4, 0, 1}};
+
+// create an array that for each traffic light stores what mutexes it needs to obtain
+int light_mutexes[4][3][NUM_MUTEXES] = {
+  [NORTH] = {
+    [LEFT] = {}, 
+    [STRAIGHT] = {2, 3, 7}, 
+    [RIGHT] = {1}
+  }, 
+  [EAST] = {
+    [LEFT] = {2, 5, 6}, 
+    [STRAIGHT] = {1, 3, 4}, 
+    [RIGHT] = {0}
+  }, 
+  [SOUTH] = {
+    [LEFT] = {1, 3, 6, 8}, 
+    [STRAIGHT] = {0, 4, 5}, 
+    [RIGHT] = {}
+  }, 
+  [WEST] = {
+    [LEFT] = {0, 4, 7, 8}, 
+    [STRAIGHT] = {}, 
+    [RIGHT] = {2}
+  }};
 
 /*
  * manage_light(void* arg)
@@ -102,8 +138,10 @@ static void* manage_light(void* arg)
       break;
     }
 
-    // claim the mutex
-    pthread_mutex_lock(&m);
+    // claim all the mutexes it needs to claim to ensure no intersecting cars are currently on the crossing
+    for (int i = 0; i < light_mutexes_count[side][direction]; i++) {
+      pthread_mutex_lock(&conflicts[light_mutexes[side][direction][i]]);
+    }
 
     // retrieve the next car that arrives at this process's traffic light
     Arrival car = curr_arrivals[side][direction][next_car];
@@ -116,8 +154,10 @@ static void* manage_light(void* arg)
 
     printf("traffic light %d %d turns red at time %d\n", side, direction, get_time_passed());
 
-    // free the mutex
-    pthread_mutex_unlock(&m);
+    // free the mutexes
+    for (int i = 0; i < light_mutexes_count[side][direction]; i++) {
+      pthread_mutex_unlock(&conflicts[light_mutexes[side][direction][i]]);
+    }
   }
 
   return(0);
@@ -133,6 +173,11 @@ int main(int argc, char * argv[])
     {
       sem_init(&semaphores[i][j], 0, 0);
     }
+  }
+
+  // create mutexes to avoid collisions
+  for (int i = 0; i < sizeof(conflicts)/sizeof(conflicts[0]); i++) {
+    pthread_mutex_init(&conflicts[i], NULL);
   }
 
   // start the timer
